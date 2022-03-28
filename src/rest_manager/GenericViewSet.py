@@ -1,0 +1,68 @@
+from django import views
+from rest_framework import serializers, viewsets, routers, permissions
+from rest_framework.schemas.openapi import AutoSchema
+from rest_framework.response import Response
+
+from django.db import models
+from typing import Any, AnyStr, Dict, List, Union, Callable
+
+
+class GenericViewSet(viewsets.ModelViewSet):
+    def __init__(self, *args, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    def get_view_name(self):
+        return super().get_view_name()
+    
+    def get_view_description(self, html=False):
+        return super().get_view_description(html)
+    
+    def get_queryset(self):
+        return super().get_queryset()
+    
+    def get_object(self):
+        return super().get_object()
+    
+    def get_permissions(self):
+        return super().get_permissions()
+    
+    def get_renderers(self):
+        return super().get_renderers()
+    
+    def get_authenticators(self):
+        return super().get_authenticators()
+    
+    def get_parsers(self):
+        return super().get_parsers()
+    
+    def get_parser_context(self, http_request):
+        return super().get_parser_context(http_request)
+    
+    def get_paginated_response(self, data):
+        return super().get_paginated_response(data)
+    
+    def get_throttles(self):
+        return super().get_throttles()
+
+    def get_serializer(self, *args, **kwargs):
+        return super().get_serializer(*args, **kwargs)
+
+    def get_serializer_class(self):
+        self.parent_manager.request = self.request
+        self.parent_manager.action = self.action
+
+        if hasattr(self, '__serializer__'):
+            return getattr(self, '__serializer__')()
+
+        return super().get_serializer_class()
+
+    def get_serializer_context(self):
+        return super().get_serializer_context()
+    
+    def dispatch(self, request, *args, **kwargs):
+        
+        self.parent_manager.args = self.args
+        self.parent_manager.kwargs = self.kwargs
+        self.parent_manager.raw_request = self.request
+
+        return super().dispatch(request, *args, **kwargs)
