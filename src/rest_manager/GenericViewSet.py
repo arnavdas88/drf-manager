@@ -49,7 +49,13 @@ class GenericViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         self.parent_manager.request = self.request
+
+        self.parent_manager.basename = self.basename
         self.parent_manager.action = self.action
+        self.parent_manager.detail = self.detail
+        self.parent_manager.suffix = self.suffix
+        self.parent_manager.name = self.name
+        self.parent_manager.description = self.description
 
         if hasattr(self, '__serializer__'):
             return getattr(self, '__serializer__')()
