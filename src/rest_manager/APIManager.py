@@ -28,18 +28,59 @@ class APIManager():
         self.app_name = model._meta.app_label
         self.queryset = queryset
 
-        self.fields = '__all__'
-        self.detail_fields = None
         self.exclude = None
+
+        self.fields_mapping = {
+            'list': '__all__',
+            'retrieve': '__all__',
+            'create': '__all__',
+            'update': '__all__',
+            'partial_update': '__all__',
+            'destroy': '__all__',
+        }
+        self.serializer_mapping = {
+            'list': None,
+            'retrieve': None,
+            'create': None,
+            'update': None,
+            'partial_update': None,
+            'destroy': None,
+        }
 
         # self.filterset_fields = ("country", "state", "city", )
         # self.search_fields = ("name", "email", )
         # self.ordering_fields = ("name", "country", )
         # self.ordering = ("-created_at", )
 
-        self.detail_serializer = None
-        self.serializer = None
         self.viewset = None
+
+    @property
+    def fields(self, ):
+        if hasattr(self, 'action'):
+            return self.fields_mapping[self.action]
+        return self.fields_mapping['list']
+
+    @fields.setter
+    def fields(self, value):
+        self.fields_mapping = {
+            'list': value,
+            'retrieve': value,
+            'create': value,
+            'update': value,
+            'partial_update': value,
+            'destroy': value,
+        }
+
+    @fields.deleter
+    def fields(self, ):
+        self.fields_mapping = {
+            'list': '__all__',
+            'retrieve': '__all__',
+            'create': '__all__',
+            'update': '__all__',
+            'partial_update': '__all__',
+            'destroy': '__all__',
+        }        
 
     def get_queryset(self, ):
         return self.queryset
@@ -48,12 +89,7 @@ class APIManager():
         return self.model
     
     def get_serializers(self, ):
-        if self.action == 'retrieve':
-            return self.get_detail_serializers()
-        return self.serializer
-    
-    def get_detail_serializers(self, ):
-        return self.detail_serializer if self.detail_serializer else self.serializer
+        return self.serializer_mapping[self.action]
 
     def get_viewset(self, ):
         return self.viewset
@@ -101,10 +137,10 @@ class APIManager():
 
         return definitions
 
-    def __call__(self, ) -> routers.BaseRouter:
-        self.serializer = self.make_api_serializers()
-        if self.detail_fields:
-            self.detail_serializer = self.make_api_serializers(fields = self.detail_fields)
+    def __call__(self, ) -> routers.BaseRouter:        
+        for action, fields in self.fields_mapping.items():
+            self.serializer_mapping[action] = self.make_api_serializers(fields=fields)
+        
         self.viewset = self.make_api_viewsets()
         
         return self.make_api_router()
@@ -147,7 +183,7 @@ class APIManager():
                         # exclude if exists
                         fields_list.remove(exclude)
             ModelSerializer.Meta.fields = fields_list
-
+        
         ModelSerializer.__name__ = class_name
             
         return ModelSerializer
