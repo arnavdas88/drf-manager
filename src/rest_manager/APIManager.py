@@ -30,6 +30,7 @@ class APIManager():
 
         self.fields = '__all__'
         self.detail_fields = None
+        self.exclude = None
 
         # self.filterset_fields = ("country", "state", "city", )
         # self.search_fields = ("name", "email", )
@@ -131,8 +132,21 @@ class APIManager():
         class ModelSerializer(base_serializer_class):
             class Meta:
                 model = self.model
-                fields = fields_list
                 # depth = 2
+        
+        if fields_list =='__all__' and self.exclude:
+            # use exclude instead of fields
+            ModelSerializer.Meta.exclude = self.exclude
+        else:
+            # use fields instead of exclude
+            if self.exclude:
+                # if exclude exists, take that into account
+                assert type(self.fields) is list
+                for exclude in self.exclude:
+                    if exclude in fields_list:
+                        # exclude if exists
+                        fields_list.remove(exclude)
+            ModelSerializer.Meta.fields = fields_list
 
         ModelSerializer.__name__ = class_name
             
