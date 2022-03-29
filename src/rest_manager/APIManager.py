@@ -137,7 +137,7 @@ class APIManager():
 
         return definitions
 
-    def __call__(self, ) -> routers.BaseRouter:        
+    def __call__(self, ) -> routers.BaseRouter:
         for action, fields in self.fields_mapping.items():
             self.serializer_mapping[action] = self.make_api_serializers(fields=fields)
         
@@ -170,6 +170,7 @@ class APIManager():
                 model = self.model
                 # depth = 2
         
+        # fields inclusion - exclusion
         if fields_list =='__all__' and self.exclude:
             # use exclude instead of fields
             ModelSerializer.Meta.exclude = self.exclude
@@ -184,6 +185,18 @@ class APIManager():
                         fields_list.remove(exclude)
             ModelSerializer.Meta.fields = fields_list
         
+        # fields nested serialization
+        # for field in self.model._meta.get_fields():
+        #     if field.name in fields_list:
+        #         print(field, type(field))
+        #         if isinstance(field, models.ForeignKey):
+        #             pass
+        #         if isinstance(field, models.ManyToManyField):
+        #             # setattr(ModelSerializer, field.name,  serializers.ListSerializer())
+        #             to = field.remote_field.model
+        #             pass
+
+
         ModelSerializer.__name__ = class_name
             
         return ModelSerializer
