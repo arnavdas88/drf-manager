@@ -5,9 +5,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from django.db import models
-from typing import AnyStr, Dict, List, Union, Callable
+from typing import AnyStr, Dict, List, Mapping, Union, Callable
 
 from .GenericViewSet import GenericViewSet
+from .GenericSerializer import GenericSerializer
 
 # "module/sys.modules" is a list of all the system files that are loading into memory at run time.
 # There are for loops below that bolt the auto-generated ViewSets and Serializers to
@@ -16,7 +17,7 @@ import sys
 module = sys.modules[__name__]
 
 class APIManager():
-    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, *args, **kwargs):
+    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, depth=2, *args, **kwargs):
 
         if isinstance(model, models.query.QuerySet):
             queryset = model
@@ -46,6 +47,17 @@ class APIManager():
             'partial_update': None,
             'destroy': None,
         }
+
+        self.nested_serializer = {
+            'list': {},
+            'retrieve': {},
+            'create': {},
+            'update': {},
+            'partial_update': {},
+            'destroy': {},
+        }
+
+        self.depth = 2
 
         # self.filterset_fields = ("country", "state", "city", )
         # self.search_fields = ("name", "email", )
@@ -80,20 +92,20 @@ class APIManager():
             'update': '__all__',
             'partial_update': '__all__',
             'destroy': '__all__',
-        }        
+        }
 
     def get_queryset(self, ):
         return self.queryset
-    
+
     def get_model(self, ):
         return self.model
-    
+
     def get_serializers(self, ):
         return self.serializer_mapping[self.action]
 
     def get_viewset(self, ):
         return self.viewset
-    
+
     def get_permissions(self, ):
         return [ permissions.AllowAny() ]
 
@@ -112,7 +124,7 @@ class APIManager():
         """Returns all definitions decorated with `@action`
 
         Returns:
-            Dict[AnyStr, Callable]: Returns a dictionary mapping the definition name with the definitions decorated with `@action` 
+            Dict[AnyStr, Callable]: Returns a dictionary mapping the definition name with the definitions decorated with `@action`
         """
         # This below code to find the actions is not compatible with the inherited class ViewSetMixin
         # NOTE: Dead Code
@@ -122,8 +134,8 @@ class APIManager():
 
         # all definitions without internal definitions and field variables
         definitions = [
-            definition for definition in dir(self) 
-            if 
+            definition for definition in dir(self)
+            if
             not definition.startswith('__') and
             definition not in attrs
         ]
@@ -139,13 +151,14 @@ class APIManager():
 
     def __call__(self, ) -> routers.BaseRouter:
         for action, fields in self.fields_mapping.items():
-            self.serializer_mapping[action] = self.make_api_serializers(fields=fields)
-        
+            nested_serializer = self.nested_serializer[action]
+            self.serializer_mapping[action] = self.make_api_serializers(serializer_name= f'{self.model.__name__}{action.capitalize()}Serializer', fields=fields, nested_serializer=nested_serializer)
+
         self.viewset = self.make_api_viewsets()
-        
+
         return self.make_api_router()
 
-    def make_api_serializers(self, serializer_name:AnyStr=None, base_serializer_class:serializers.Serializer=serializers.ModelSerializer, fields:List[AnyStr]=None) -> serializers.Serializer:
+    def make_api_serializers(self, serializer_name:AnyStr=None, base_serializer_class:serializers.Serializer=GenericSerializer, fields:List[AnyStr]=None, nested_serializer:Mapping[str, serializers.Serializer] = {}) -> serializers.Serializer:
         """
         This function generates serializers for models returned in apps.apps.get_models()
         Adjusting the `depth` variable on Meta class can drastically speed up the API.
@@ -154,7 +167,7 @@ class APIManager():
 
         Args:
             serializer_name (AnyStr, optional): Name of the serializer class
-            base_serializer_class (serializers.Serializer, optional): Base class for the serializer. Defaults to serializers.ModelSerializer.
+            base_serializer_class (serializers.Serializer, optional): Base class for the serializer. Defaults to GenericSerializer.
             fields (List[AnyStr], optional): List of fields to include during serialization
 
         Returns:
@@ -168,8 +181,9 @@ class APIManager():
         class ModelSerializer(base_serializer_class):
             class Meta:
                 model = self.model
-                # depth = 2
-        
+
+        ModelSerializer.Meta.depth = self.depth
+
         # fields inclusion - exclusion
         if fields_list =='__all__' and self.exclude:
             # use exclude instead of fields
@@ -184,21 +198,25 @@ class APIManager():
                         # exclude if exists
                         fields_list.remove(exclude)
             ModelSerializer.Meta.fields = fields_list
-        
+
         # fields nested serialization
-        # for field in self.model._meta.get_fields():
-        #     if field.name in fields_list:
-        #         print(field, type(field))
-        #         if isinstance(field, models.ForeignKey):
-        #             pass
-        #         if isinstance(field, models.ManyToManyField):
-        #             # setattr(ModelSerializer, field.name,  serializers.ListSerializer())
-        #             to = field.remote_field.model
-        #             pass
+        for field in self.model._meta.get_fields():
+            if field.name in fields_list:
+                if field.name in nested_serializer:
+                    if isinstance(field, models.ForeignKey):
+                        field_serializer = nested_serializer[field.name]()
+                        ModelSerializer._declared_fields[field.name] = field_serializer
+                        # pass
+
+                    if isinstance(field, models.ManyToManyField):
+                        field_serializer = nested_serializer[field.name](many=True)
+                        ModelSerializer._declared_fields[field.name] = field_serializer
+                        # to = field.remote_field.model
+                        # pass
 
 
         ModelSerializer.__name__ = class_name
-            
+
         return ModelSerializer
 
     def make_api_viewsets(self, viewset_name:AnyStr=None, base_viewset_class:viewsets.GenericViewSet=GenericViewSet) -> viewsets.ViewSet:
