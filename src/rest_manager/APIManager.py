@@ -192,11 +192,20 @@ class APIManager():
             # use fields instead of exclude
             if self.exclude:
                 # if exclude exists, take that into account
-                assert type(self.fields) is list
+
+                # if field list is a string (as we know it is not '__all__'), it must be
+                # a field name, thus add the field name as a list
+                if isinstance(fields_list, str):
+                    fields_list = [ fields_list ]
+
+                # assert the field name as list
+                assert type(fields_list) is list
+
                 for exclude in self.exclude:
                     if exclude in fields_list:
                         # exclude if exists
                         fields_list.remove(exclude)
+
             ModelSerializer.Meta.fields = fields_list
 
         # fields nested serialization
