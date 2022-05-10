@@ -186,6 +186,14 @@ class APIManager():
 
         # fields inclusion - exclusion
         if fields_list =='__all__' and self.exclude:
+            # convert fields_list str to actual list
+            fields_list = [ field.name for field in self.model._meta.get_fields() ]
+
+            for exclude in self.exclude:
+                if exclude in fields_list:
+                    # exclude if exists
+                    fields_list.remove(exclude)
+
             # use exclude instead of fields
             ModelSerializer.Meta.exclude = self.exclude
         else:
@@ -207,6 +215,15 @@ class APIManager():
                         fields_list.remove(exclude)
 
             ModelSerializer.Meta.fields = fields_list
+
+            if fields_list =='__all__':
+                # convert fields_list str to actual list
+                fields_list = [ field.name for field in self.model._meta.get_fields() ]
+
+                for exclude in (self.exclude if self.exclude else []):
+                    if exclude in fields_list:
+                        # exclude if exists
+                        fields_list.remove(exclude)
 
         # fields nested serialization
         for field in self.model._meta.get_fields():
