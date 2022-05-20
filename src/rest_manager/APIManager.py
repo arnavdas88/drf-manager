@@ -7,6 +7,9 @@ from rest_framework.response import Response
 from django.db import models
 from typing import AnyStr, Dict, List, Mapping, Union, Callable
 
+from .utils import get_model_fields
+from .FieldSet import SerializerScheme
+from .Serializer import SerializerDefinition
 from .GenericViewSet import GenericViewSet
 from .GenericSerializer import GenericSerializer
 
@@ -17,7 +20,7 @@ import sys
 module = sys.modules[__name__]
 
 class APIManager():
-    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, depth=2, *args, **kwargs):
+    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, serializer:SerializerDefinition=None, depth=2, *args, **kwargs):
 
         if isinstance(model, models.query.QuerySet):
             queryset = model
@@ -29,33 +32,8 @@ class APIManager():
         self.app_name = model._meta.app_label
         self.queryset = queryset
 
-        self.exclude = None
-
-        self.fields_mapping = {
-            'list': '__all__',
-            'retrieve': '__all__',
-            'create': '__all__',
-            'update': '__all__',
-            'partial_update': '__all__',
-            'destroy': '__all__',
-        }
-        self.serializer_mapping = {
-            'list': None,
-            'retrieve': None,
-            'create': None,
-            'update': None,
-            'partial_update': None,
-            'destroy': None,
-        }
-
-        self.nested_serializer = {
-            'list': {},
-            'retrieve': {},
-            'create': {},
-            'update': {},
-            'partial_update': {},
-            'destroy': {},
-        }
+        self.serializer = serializer
+        self.serializer_mapping = {}
 
         self.depth = 2
 
@@ -65,34 +43,6 @@ class APIManager():
         # self.ordering = ("-created_at", )
 
         self.viewset = None
-
-    @property
-    def fields(self, ):
-        if hasattr(self, 'action'):
-            return self.fields_mapping[self.action]
-        return self.fields_mapping['list']
-
-    @fields.setter
-    def fields(self, value):
-        self.fields_mapping = {
-            'list': value,
-            'retrieve': value,
-            'create': value,
-            'update': value,
-            'partial_update': value,
-            'destroy': value,
-        }
-
-    @fields.deleter
-    def fields(self, ):
-        self.fields_mapping = {
-            'list': '__all__',
-            'retrieve': '__all__',
-            'create': '__all__',
-            'update': '__all__',
-            'partial_update': '__all__',
-            'destroy': '__all__',
-        }
 
     def get_queryset(self, ):
         return self.queryset
@@ -150,33 +100,53 @@ class APIManager():
         return definitions
 
     def __call__(self, ) -> routers.BaseRouter:
-        for action, fields in self.fields_mapping.items():
-            nested_serializer = self.nested_serializer[action]
-            self.serializer_mapping[action] = self.make_api_serializers(serializer_name= f'{self.model.__name__}{action.capitalize()}Serializer', fields=fields, nested_serializer=nested_serializer)
+        # Builds all the FieldSet for all the actions
+        self.serializer.build_fieldset()
+
+        # Builds Serializers
+        for action in self.serializer.get_actions():
+            scheme = action.scheme
+            fields = action.validated_fieldset
+            nested_serializer = action._serializer_for_field
+
+
+            action.serializer = self.make_api_serializers(serializer_name= f'{self.model.__name__}{action._for.capitalize()}Serializer', fields=fields, scheme=scheme, nested_serializer=nested_serializer)
+            self.serializer_mapping[action._for.lower()] = action._serializer
 
         self.viewset = self.make_api_viewsets()
 
         return self.make_api_router()
 
-    def make_api_serializers(self, serializer_name:AnyStr=None, base_serializer_class:serializers.Serializer=GenericSerializer, fields:List[AnyStr]=None, nested_serializer:Mapping[str, serializers.Serializer] = {}) -> serializers.Serializer:
-        """
+    def make_api_serializers(self, serializer_name:AnyStr=None, base_serializer_class:serializers.Serializer=GenericSerializer, fields:List[AnyStr]=None, scheme:SerializerScheme=SerializerScheme.Field, nested_serializer:Mapping[str, serializers.Serializer] = {}) -> serializers.Serializer:
+        """make_api_serializers Generates Serializer dynamically
+
         This function generates serializers for models returned in apps.apps.get_models()
         Adjusting the `depth` variable on Meta class can drastically speed up the API.
         It's recommended to use a customer Manager on each of your models to override
         `select_related` and `prefetch_related` and define which fields need joined there.
 
-        Args:
-            serializer_name (AnyStr, optional): Name of the serializer class
-            base_serializer_class (serializers.Serializer, optional): Base class for the serializer. Defaults to GenericSerializer.
-            fields (List[AnyStr], optional): List of fields to include during serialization
+        Parameters
+        ----------
+        serializer_name : AnyStr, optional
+            Name of the serializer class, by default None
+        base_serializer_class : serializers.Serializer, optional
+            Base class for the serializer, by default GenericSerializer
+        fields : List[AnyStr], optional
+            List of fields to include/excluding during serialization, by default None
+        scheme : SerializerScheme, optional
+            Specifies whether the defined fields should be included or excluded, by default SerializerScheme.Field
+        nested_serializer : Mapping[str, serializers.Serializer], optional
+            Specifies predefined serializers for fields, example: `serializers for ForeignKeys` , by default {}
 
-        Returns:
-            serializers.Serializer: Serializer for the model.
+        Returns
+        -------
+        serializers.Serializer
+            Return a serializer built on the specified directive
         """
 
         # Create the serializer class
         class_name = f'{self.model.__name__}Serializer' if serializer_name is None else serializer_name
-        fields_list = fields if fields else self.fields
+        fields_list = set(fields if type(fields) is list else get_model_fields(self.model))
 
         class ModelSerializer(base_serializer_class):
             class Meta:
@@ -184,61 +154,26 @@ class APIManager():
 
         ModelSerializer.Meta.depth = self.depth
 
-        # fields inclusion - exclusion
-        if fields_list =='__all__' and self.exclude:
-            # convert fields_list str to actual list
-            fields_list = [ field.name for field in self.model._meta.get_fields() ]
-
-            for exclude in self.exclude:
-                if exclude in fields_list:
-                    # exclude if exists
-                    fields_list.remove(exclude)
-
-            # use exclude instead of fields
-            ModelSerializer.Meta.exclude = self.exclude
+        if scheme is SerializerScheme.Exlcuded:
+            ModelSerializer.Meta.exclude = fields
         else:
-            # use fields instead of exclude
-            if self.exclude:
-                # if exclude exists, take that into account
-
-                # if field list is a string (as we know it is not '__all__'), it must be
-                # a field name, thus add the field name as a list
-                if isinstance(fields_list, str):
-                    fields_list = [ fields_list ]
-
-                # assert the field name as list
-                assert type(fields_list) is list
-
-                for exclude in self.exclude:
-                    if exclude in fields_list:
-                        # exclude if exists
-                        fields_list.remove(exclude)
-
-            ModelSerializer.Meta.fields = fields_list
-
-            if fields_list =='__all__':
-                # convert fields_list str to actual list
-                fields_list = [ field.name for field in self.model._meta.get_fields() ]
-
-                for exclude in (self.exclude if self.exclude else []):
-                    if exclude in fields_list:
-                        # exclude if exists
-                        fields_list.remove(exclude)
+            ModelSerializer.Meta.fields = fields
 
         # fields nested serialization
-        for field in self.model._meta.get_fields():
-            if field.name in fields_list:
-                if field.name in nested_serializer:
-                    if isinstance(field, models.ForeignKey):
-                        field_serializer = nested_serializer[field.name]()
-                        ModelSerializer._declared_fields[field.name] = field_serializer
-                        # pass
+        nested = fields_list.intersection(nested_serializer.keys())
+        for field in nested:
+            field = self.model._meta.get_field(field)
+            if field.name in nested_serializer:
+                if isinstance(field, models.ForeignKey):
+                    field_serializer = nested_serializer[field.name]()
+                    ModelSerializer._declared_fields[field.name] = field_serializer
+                    # pass
 
-                    if isinstance(field, models.ManyToManyField):
-                        field_serializer = nested_serializer[field.name](many=True)
-                        ModelSerializer._declared_fields[field.name] = field_serializer
-                        # to = field.remote_field.model
-                        # pass
+                if isinstance(field, models.ManyToManyField):
+                    field_serializer = nested_serializer[field.name](many=True)
+                    ModelSerializer._declared_fields[field.name] = field_serializer
+                    # to = field.remote_field.model
+                    # pass
 
 
         ModelSerializer.__name__ = class_name
