@@ -1,7 +1,10 @@
 from typing import Any
-from .Mapping import Mapping
-from .utils import get_model_fields
+
 from django.db.models import Model
+
+from .Mapping import Mapping
+from .FieldSet import FieldSet
+from .utils import get_model_fields
 
 class SerializerDefinition(Mapping):
 
@@ -10,7 +13,7 @@ class SerializerDefinition(Mapping):
         self._fields = "__all__"
         self.exclude = []
 
-        super().__init__()
+        super().__init__(T=FieldSet)
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return super().__call__(*args, **kwds)

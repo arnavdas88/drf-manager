@@ -6,16 +6,16 @@ from enum import Enum
 from typing import Any, List
 
 from .GenericSerializer import GenericSerializer
+from .SetDefinition import SetDefinition
 from .utils import validate
 
 class SerializerScheme(Enum):
     Field = "fields"
     Exlcuded = "exclude"
 
-class FieldSet:
+class FieldSet(SetDefinition):
     def __init__(self, name, _for=None) -> None:
-        self.name = name
-        self._for = _for
+        super().__init__(name, _for)
 
         # Fields to be shown
         self.fields = None

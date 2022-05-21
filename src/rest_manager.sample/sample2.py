@@ -1,7 +1,7 @@
 from rest_framework import routers
 
 from rest_manager.APIManager import APIManager
-from rest_manager.Serializer import Serializer
+from rest_manager.SerializerDefinition import Serializer
 
 from core.models.organization import Organization
 from core.models.management.user import User

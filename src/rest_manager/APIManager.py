@@ -7,9 +7,10 @@ from rest_framework.response import Response
 from django.db import models
 from typing import AnyStr, Dict, List, Mapping, Union, Callable
 
+from .PermissionDefinition import PermissionDefinition
 from .utils import get_model_fields
 from .FieldSet import SerializerScheme
-from .Serializer import SerializerDefinition
+from .SerializerDefinition import SerializerDefinition
 from .GenericViewSet import GenericViewSet
 from .GenericSerializer import GenericSerializer
 
@@ -20,7 +21,7 @@ import sys
 module = sys.modules[__name__]
 
 class APIManager():
-    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, serializer:SerializerDefinition=None, depth=2, *args, **kwargs):
+    def __init__(self, model:Union[models.Model, models.query.QuerySet]=None, serializer:SerializerDefinition=None, permission:PermissionDefinition=None, depth=2, *args, **kwargs):
 
         if isinstance(model, models.query.QuerySet):
             queryset = model
@@ -33,14 +34,14 @@ class APIManager():
         self.queryset = queryset
 
         self.serializer = serializer
-        self.serializer_mapping = {}
+        self.permission = permission if permission else PermissionDefinition()
 
         self.depth = 2
 
-        # self.filterset_fields = ("country", "state", "city", )
-        # self.search_fields = ("name", "email", )
-        # self.ordering_fields = ("name", "country", )
-        # self.ordering = ("-created_at", )
+        self.filterset_fields = get_model_fields(self.model)
+        self.search_fields = get_model_fields(self.model)
+        self.ordering_fields = get_model_fields(self.model)
+        self.ordering = get_model_fields(self.model)
 
         self.viewset = None
 
@@ -51,13 +52,14 @@ class APIManager():
         return self.model
 
     def get_serializers(self, ):
-        return self.serializer_mapping[self.action]
+        return self.serializer.get_action(self.action).serializer
+        # self.serializer_mapping[self.action]
 
     def get_viewset(self, ):
         return self.viewset
 
     def get_permissions(self, ):
-        return [ permissions.AllowAny() ]
+        return self.permission.get_action(self.action)
 
     def get_schema(self, ):
         return self.viewset.schema if self.viewset else None
@@ -111,7 +113,7 @@ class APIManager():
 
 
             action.serializer = self.make_api_serializers(serializer_name= f'{self.model.__name__}{action._for.capitalize()}Serializer', fields=fields, scheme=scheme, nested_serializer=nested_serializer)
-            self.serializer_mapping[action._for.lower()] = action._serializer
+            # self.serializer_mapping[action._for.lower()] = action._serializer
 
         self.viewset = self.make_api_viewsets()
 
@@ -205,7 +207,7 @@ class APIManager():
             # 'action_permissions': {},
             'app_name': self.app_name,
             'get_queryset': self.get_queryset,
-            'get_permissions': self.get_permissions,
+            '__permissions__': self.get_permissions,
             # 'get_serializer_class': self.get_serializers,
             '__serializer__': self.get_serializers,
             'parent_manager': self,
