@@ -20,7 +20,7 @@ setuptools.setup(
         "pytest",
 
         # Django
-        "django==4.0.4",
+        "django==4.0.6",
 
         # Django Rest Framework
         "pytz==2021.3",
